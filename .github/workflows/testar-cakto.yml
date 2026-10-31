@@ -24,19 +24,19 @@ jobs:
           if not cid or not secret:
               raise SystemExit("Secrets da Cakto ausentes.")
           body = urllib.parse.urlencode({"client_id": cid, "client_secret": secret}).encode()
-          def request(url, data=None, headers=None):
+          def request(url, etapa, data=None, headers=None):
               req = urllib.request.Request(url, data=data, headers=headers or {})
               try:
                   with urllib.request.urlopen(req, timeout=20) as response:
                       return json.load(response)
               except urllib.error.HTTPError as exc:
-                  raise SystemExit(f"Erro HTTP {exc.code} ao acessar a API (sem expor resposta).")
-          token_data = request(base + "token/", body, {"Content-Type": "application/x-www-form-urlencoded"})
+                  raise SystemExit(f"Erro HTTP {exc.code} na etapa: {etapa} (sem expor resposta).")
+          token_data = request(base + "token/", "solicitar token", body, {"Content-Type": "application/x-www-form-urlencoded"})
           token = token_data.get("access_token")
           if not token:
               raise SystemExit("Resposta de autenticação sem access_token.")
           print("Autenticação: OK")
-          result = request(base + "products/?page=1&limit=1", headers={"Authorization": "Bearer " + token})
+          result = request(base + "products/?page=1&limit=1", "consultar produtos", headers={"Authorization": "Bearer " + token})
           print("Consulta de produtos: OK")
           if isinstance(result, dict) and isinstance(result.get("count"), int):
               print("Quantidade de produtos:", result["count"])
