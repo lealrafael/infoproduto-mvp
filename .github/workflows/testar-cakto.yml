@@ -11,33 +11,54 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Instalar requests
+        run: python -m pip install requests
+
       - name: Autenticar e consultar produtos (somente leitura)
         env:
           CAKTO_CLIENT_ID: ${{ secrets.CAKTO_CLIENT_ID }}
           CAKTO_CLIENT_SECRET: ${{ secrets.CAKTO_CLIENT_SECRET }}
         run: |
-          python3 - <<'PY'
-          import os, json, urllib.request, urllib.parse, urllib.error
+          python - <<'PY'
+          import os
+          import requests
+
           base = "https://api.cakto.com.br/public_api/"
           cid = os.environ.get("CAKTO_CLIENT_ID", "")
           secret = os.environ.get("CAKTO_CLIENT_SECRET", "")
           if not cid or not secret:
               raise SystemExit("Secrets da Cakto ausentes.")
-          body = urllib.parse.urlencode({"client_id": cid, "client_secret": secret}).encode()
-          def request(url, etapa, data=None, headers=None):
-              req = urllib.request.Request(url, data=data, headers=headers or {})
-              try:
-                  with urllib.request.urlopen(req, timeout=20) as response:
-                      return json.load(response)
-              except urllib.error.HTTPError as exc:
-                  raise SystemExit(f"Erro HTTP {exc.code} na etapa: {etapa} (sem expor resposta).")
-          token_data = request(base + "token/", "solicitar token", body, {"Content-Type": "application/x-www-form-urlencoded"})
-          token = token_data.get("access_token")
-          if not token:
-              raise SystemExit("Resposta de autenticação sem access_token.")
-          print("Autenticação: OK")
-          result = request(base + "products/?page=1&limit=1", "consultar produtos", headers={"Authorization": "Bearer " + token})
-          print("Consulta de produtos: OK")
-          if isinstance(result, dict) and isinstance(result.get("count"), int):
-              print("Quantidade de produtos:", result["count"])
+
+          try:
+              response = requests.post(
+                  base + "token/",
+                  headers={"Content-Type": "application/x-www-form-urlencoded"},
+                  data={"client_id": cid, "client_secret": secret},
+                  timeout=30,
+              )
+              print("Autenticacao HTTP:", response.status_code)
+              response.raise_for_status()
+              token = response.json().get("access_token")
+              if not token:
+                  raise SystemExit("Resposta de autenticacao sem access_token.")
+              print("Autenticacao: OK")
+
+              response = requests.get(
+                  base + "products/",
+                  params={"page": 1, "limit": 1},
+                  headers={"Authorization": f"Bearer {token}"},
+                  timeout=30,
+              )
+              print("Consulta HTTP:", response.status_code)
+              response.raise_for_status()
+              print("Consulta de produtos: OK")
+              print("Quantidade de produtos:", response.json().get("count"))
+          except requests.RequestException as exc:
+              status = exc.response.status_code if exc.response is not None else "sem resposta HTTP"
+              raise SystemExit(f"Falha de comunicacao com a Cakto (HTTP {status}).") from None
           PY
